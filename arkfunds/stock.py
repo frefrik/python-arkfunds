@@ -34,10 +34,10 @@ class Stock(ArkFunds):
             "market_value",
         ],
         "trades": [
+            "ticker",
             "date",
             "fund",
             "direction",
-            "ticker",
             "shares",
             "etf_percent",
         ],
@@ -70,43 +70,73 @@ class Stock(ArkFunds):
             params["query"]["symbol"] = symbol
             data = self._get(params)
 
-            if data:
-                if endpoint == "profile" and not data["profile"]:
-                    df = pd.DataFrame([{"ticker": symbol}], columns=columns)
-                elif endpoint == "ownership":
-                    df = self._transform_ownership_data(symbol, data)
-                elif endpoint == "price":
-                    df = pd.DataFrame([data], columns=columns)
-                elif not isinstance(data[endpoint], list):
-                    df = pd.DataFrame([data[endpoint]], columns=columns)
-                else:
-                    df = pd.DataFrame(data[endpoint], columns=columns)
+            if not data:
+                continue
 
-                if endpoint in ["trades", "price"]:
-                    df["ticker"] = data["symbol"]
+            if endpoint == "profile":
+                df = self._handle_profile_data(data, columns)
+            elif endpoint == "ownership":
+                df = self._handle_ownership_data(symbol, data, columns)
+            elif endpoint == "price":
+                df = self._handle_price_data(symbol, data, columns)
+            elif endpoint == "trades":
+                df = self._handle_trades_data(symbol, data, columns)
+            else:
+                df = self._handle_generic_data(data, endpoint, columns)
 
-                dataframes.append(df)
+            if df.empty:
+                continue
+
+            dataframes.append(df)
 
         if not dataframes:
             return pd.DataFrame(columns=columns)
         else:
             return pd.concat(dataframes, axis=0).reset_index(drop=True)
 
-    def _transform_ownership_data(self, symbol, data):
-        columns = self._COLUMNS["ownership"]
+    def _handle_profile_data(self, data, columns):
+        if not data["profile"]:
+            return pd.DataFrame(columns=columns)
+
+        return pd.DataFrame([data["profile"]], columns=columns)
+
+    def _handle_price_data(self, symbol, data, columns):
+        if all(value is None for key, value in data.items() if key != "symbol"):
+            return pd.DataFrame(columns=columns)
+
+        df = pd.DataFrame([data], columns=columns)
+        df["ticker"] = symbol
+
+        return df
+
+    def _handle_trades_data(self, symbol, data, columns):
+        if not data["trades"]:
+            return pd.DataFrame(columns=columns)
+
+        df = pd.DataFrame(data["trades"], columns=columns)
+        df["ticker"] = symbol
+
+        return df
+
+    def _handle_generic_data(self, data, endpoint, columns):
+        if not isinstance(data[endpoint], list):
+            return pd.DataFrame([data[endpoint]], columns=columns)
+
+        return pd.DataFrame(data[endpoint], columns=columns)
+
+    def _handle_ownership_data(self, symbol, data, columns):
+        if not data["data"]:
+            return pd.DataFrame(columns=columns)
+
         dataframes = []
+        for day_data in data["data"]:
+            for ownership_data in day_data["ownership"]:
+                df = pd.DataFrame([ownership_data], columns=columns)
+                df["ticker"] = symbol
+                dataframes.append(df)
 
-        if data["data"]:
-            for day_data in data["data"]:
-                for ownership_data in day_data["ownership"]:
-                    df = pd.DataFrame([ownership_data], columns=columns)
-                    df["ticker"] = symbol
-                    dataframes.append(df)
-
-            df = pd.concat(dataframes, axis=0).reset_index(drop=True)
-            df = df.sort_values(by=["ticker", "date", "weight_rank"])
-        else:
-            df = pd.DataFrame([{"ticker": symbol}], columns=columns)
+        df = pd.concat(dataframes, axis=0).reset_index(drop=True)
+        df = df.sort_values(by=["ticker", "date", "weight_rank"])
 
         return df
 
@@ -129,7 +159,9 @@ class Stock(ArkFunds):
 
         return self._dataframe(self.symbols, params)
 
-    def fund_ownership(self, date_from: date = None, date_to: date = None, limit: int = None):
+    def fund_ownership(
+        self, date_from: date = None, date_to: date = None, limit: int = None
+    ):
         """Get Stock Fund Ownership
 
         Args:
@@ -153,7 +185,11 @@ class Stock(ArkFunds):
         return self._dataframe(self.symbols, params)
 
     def trades(
-        self, direction: str = None, date_from: date = None, date_to: date = None, limit: int = None
+        self,
+        direction: str = None,
+        date_from: date = None,
+        date_to: date = None,
+        limit: int = None,
     ):
         """Get Stock Trades
 
