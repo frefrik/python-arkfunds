@@ -96,14 +96,17 @@ class Stock(ArkFunds):
         columns = self._COLUMNS["ownership"]
         dataframes = []
 
-        for day_data in data["data"]:
-            for ownership_data in day_data["ownership"]:
-                df = pd.DataFrame([ownership_data], columns=columns)
-                df["ticker"] = symbol
-                dataframes.append(df)
+        if data["data"]:
+            for day_data in data["data"]:
+                for ownership_data in day_data["ownership"]:
+                    df = pd.DataFrame([ownership_data], columns=columns)
+                    df["ticker"] = symbol
+                    dataframes.append(df)
 
-        df = pd.concat(dataframes, axis=0).reset_index(drop=True)
-        df = df.sort_values(by=["ticker", "date", "weight_rank"])
+            df = pd.concat(dataframes, axis=0).reset_index(drop=True)
+            df = df.sort_values(by=["ticker", "date", "weight_rank"])
+        else:
+            df = pd.DataFrame([{"ticker": symbol}], columns=columns)
 
         return df
 
