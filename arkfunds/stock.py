@@ -4,7 +4,6 @@ import pandas as pd
 
 from .arkfunds import ArkFunds
 from .utils import _convert_to_list
-from .yahoo import YahooFinance
 
 
 class Stock(ArkFunds):
@@ -20,7 +19,6 @@ class Stock(ArkFunds):
             "fullTimeEmployees",
             "summary",
             "website",
-            "market",
             "exchange",
             "currency",
             "marketCap",
@@ -40,10 +38,17 @@ class Stock(ArkFunds):
             "fund",
             "direction",
             "ticker",
-            "company",
-            "cusip",
             "shares",
             "etf_percent",
+        ],
+        "price": [
+            "ticker",
+            "exchange",
+            "currency",
+            "price",
+            "change",
+            "changep",
+            "last_trade",
         ],
     }
 
@@ -56,11 +61,6 @@ class Stock(ArkFunds):
         super(Stock, self).__init__(symbols)
         self.symbols = _convert_to_list(symbols)
 
-        try:
-            self.yf = YahooFinance(self.symbols)
-        except Exception:
-            self.yf = None
-
     def _dataframe(self, symbols, params):
         endpoint = params["endpoint"]
         columns = self._COLUMNS[endpoint]
@@ -71,14 +71,17 @@ class Stock(ArkFunds):
             data = self._get(params)
 
             if data:
-                if endpoint == "profile":
-                    df = pd.DataFrame(data, columns=columns, index=[0])
+                if endpoint == "ownership":
+                    df = self._transform_ownership_data(symbol, data)
+                elif endpoint == "price":
+                    df = pd.DataFrame([data], columns=columns)
+                elif not isinstance(data[endpoint], list):
+                    df = pd.DataFrame([data[endpoint]], columns=columns)
                 else:
                     df = pd.DataFrame(data[endpoint], columns=columns)
 
-                if endpoint == "ownership":
-                    df["ticker"] = data.get("symbol")
-                    df["date"] = data.get("date")
+                if endpoint in ["trades", "price"]:
+                    df["ticker"] = data["symbol"]
 
                 dataframes.append(df)
 
@@ -87,22 +90,47 @@ class Stock(ArkFunds):
         else:
             return pd.concat(dataframes, axis=0).reset_index(drop=True)
 
-    def profile(self):
+    def _transform_ownership_data(self, symbol, data):
+        columns = self._COLUMNS["ownership"]
+        dataframes = []
+
+        for day_data in data["data"]:
+            for ownership_data in day_data["ownership"]:
+                df = pd.DataFrame([ownership_data], columns=columns)
+                df["ticker"] = symbol
+                dataframes.append(df)
+
+        df = pd.concat(dataframes, axis=0).reset_index(drop=True)
+        df = df.sort_values(by=["ticker", "date", "weight_rank"])
+
+        return df
+
+    def profile(self, price: bool = False):
         """Get Stock profile information
 
+        Args:
+            price (bool, optional): Show current share price. Defaults to False.
+
         Returns:
-            dict
+            pandas.DataFrame
         """
         params = {
             "key": "stock",
             "endpoint": "profile",
-            "query": {},
+            "query": {
+                "price": price,
+            },
         }
 
         return self._dataframe(self.symbols, params)
 
-    def fund_ownership(self):
+    def fund_ownership(self, date_from: date = None, date_to: date = None, limit: int = None):
         """Get Stock Fund Ownership
+
+        Args:
+            date_from (date, optional): From-date in ISO 8601 format. Defaults to None.
+            date_to (date, optional): To-date in ISO 8601 format. Defaults to None.
+            limit (int, optional): Limit number of results. Defaults to None.
 
         Returns:
             pandas.DataFrame
@@ -110,13 +138,17 @@ class Stock(ArkFunds):
         params = {
             "key": "stock",
             "endpoint": "ownership",
-            "query": {},
+            "query": {
+                "date_from": date_from,
+                "date_to": date_to,
+                "limit": limit,
+            },
         }
 
         return self._dataframe(self.symbols, params)
 
     def trades(
-        self, direction: str = None, date_from: date = None, date_to: date = None
+        self, direction: str = None, date_from: date = None, date_to: date = None, limit: int = None
     ):
         """Get Stock Trades
 
@@ -124,6 +156,7 @@ class Stock(ArkFunds):
             direction (str, optional): 'Buy' or 'Sell'. Defaults to None.
             date_from (date, optional): From-date in ISO 8601 format.. Defaults to None.
             date_to (date, optional): To-date in ISO 8601 format.. Defaults to None.
+            limit (int, optional): Limit number of results. Defaults to None.
 
         Returns:
             pandas.DataFrame
@@ -135,6 +168,7 @@ class Stock(ArkFunds):
                 "direction": [direction.lower() if direction else None],
                 "date_from": date_from,
                 "date_to": date_to,
+                "limit": limit,
             },
         }
 
@@ -146,18 +180,10 @@ class Stock(ArkFunds):
         Returns:
             pandas.DataFrame
         """
-        if self.yf:
-            return self.yf.price
+        params = {
+            "key": "stock",
+            "endpoint": "price",
+            "query": {},
+        }
 
-    def price_history(self, days_back=7, frequency="d"):
-        """Get historical price data for ticker
-
-        Args:
-            days_back (int, optional): Number of days with history. Defaults to 7.
-            frequency (str, optional): Valid params: 'd' (daily), 'w' (weekly), 'm' (monthly). Defaults to "d".
-
-        Returns:
-            pandas.DataFrame
-        """
-        if self.yf:
-            return self.yf.price_history(days_back=days_back, frequency=frequency)
+        return self._dataframe(self.symbols, params)
