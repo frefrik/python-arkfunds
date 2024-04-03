@@ -11,7 +11,7 @@ import arkfunds
 # -- Project information -----------------------------------------------------
 
 project = "arkfunds-python"
-copyright = "2021, Fredrik Haarstad"
+copyright = "2024, Fredrik Haarstad"
 author = "Fredrik Haarstad"
 release = arkfunds.__version__
 
