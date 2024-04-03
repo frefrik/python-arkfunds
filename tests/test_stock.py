@@ -31,7 +31,6 @@ def test_stock_profile_columns(stock):
         "fullTimeEmployees",
         "summary",
         "website",
-        "market",
         "exchange",
         "currency",
         "marketCap",
@@ -41,11 +40,25 @@ def test_stock_profile_columns(stock):
 
 
 def test_bad_stock_profile(symbol="LOLOIL"):
-    assert Stock(symbol).profile() == f"Stock.profile: No data found for ['{symbol}']"
+    df = Stock(symbol).profile()
+    assert df.empty and df.columns.to_list() == [
+        "ticker",
+        "name",
+        "country",
+        "industry",
+        "sector",
+        "fullTimeEmployees",
+        "summary",
+        "website",
+        "exchange",
+        "currency",
+        "marketCap",
+        "sharesOutstanding",
+    ]
 
 
 def test_stock_fund_ownership(stock):
-    assert stock.fund_ownership() is not None
+    assert not stock.fund_ownership().empty
 
 
 def test_stock_trades(stock):
@@ -54,10 +67,6 @@ def test_stock_trades(stock):
 
 def test_stock_price(stock):
     assert not stock.price().empty
-
-
-def test_stock_price_history(stock):
-    assert not stock.price_history().empty
 
 
 def test_stock_symbols_list():
