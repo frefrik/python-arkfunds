@@ -28,6 +28,7 @@ class ETF(ArkFunds):
             "cusip",
             "shares",
             "market_value",
+            "share_price",
             "weight",
             "weight_rank",
         ],
@@ -50,6 +51,13 @@ class ETF(ArkFunds):
             "summary",
             "url",
             "image",
+        ],
+        "performance": [
+            "fund",
+            "datatype",
+            "as_of_date",
+            "period",
+            "return",
         ],
     }
 
@@ -82,24 +90,76 @@ class ETF(ArkFunds):
         dataframes = []
 
         if not self.symbols:
-            return f"ETF.{endpoint}: Invalid symbols {self.invalid_symbols}. Symbols accepted: {', '.join(self.ARK_FUNDS)}"
+            return (
+                f"ETF.{endpoint}: Invalid symbols {self.invalid_symbols}. "
+                f"Symbols accepted: {', '.join(self.ARK_FUNDS)}"
+            )
         else:
             for symbol in symbols:
                 params["query"]["symbol"] = symbol
                 data = self._get(params)
 
-                df = pd.DataFrame(data[endpoint], columns=columns)
+                if endpoint == "performance":
+                    data = self._transform_performance_data(data)
 
-                if endpoint == "holdings":
-                    df["fund"] = symbol
-                    df["date"] = data.get("date")
-
-                if endpoint == "trades":
-                    df["fund"] = symbol
+                if not isinstance(data[endpoint], list):
+                    df = pd.DataFrame([data[endpoint]], columns=columns)
+                else:
+                    df = pd.DataFrame(data[endpoint], columns=columns)
 
                 dataframes.append(df)
 
             return pd.concat(dataframes, axis=0).reset_index(drop=True)
+
+    def _transform_performance_data(self, data):
+        fund = data["symbol"]
+        performance = data["performance"][0]
+
+        overview = performance["overview"]
+        trailing_returns = performance["trailingReturns"]
+        annual_returns = performance["annualReturns"]
+
+        rows = []
+
+        # Handle overview data
+        for period, return_value in overview.items():
+            if period != "asOfDate":
+                rows.append(
+                    {
+                        "fund": fund,
+                        "datatype": "Overview",
+                        "as_of_date": overview["asOfDate"],
+                        "period": period,
+                        "return": return_value,
+                    }
+                )
+
+        # Handle trailing returns data
+        for period, return_value in trailing_returns.items():
+            if period != "asOfDate":
+                rows.append(
+                    {
+                        "fund": fund,
+                        "datatype": "TrailingReturns",
+                        "as_of_date": trailing_returns["asOfDate"],
+                        "period": period,
+                        "return": return_value,
+                    }
+                )
+
+        # Handle annual returns data
+        for annual_return in annual_returns:
+            rows.append(
+                {
+                    "fund": fund,
+                    "datatype": "AnnualReturns",
+                    "as_of_date": f"{annual_return['year']}-12-31",
+                    "period": str(annual_return["year"]),
+                    "return": annual_return["value"],
+                }
+            )
+
+        return {"performance": rows}
 
     def profile(self):
         """Get ARK ETF profile information
@@ -169,6 +229,25 @@ class ETF(ArkFunds):
             "query": {
                 "date_from": date_from,
                 "date_to": date_to,
+            },
+        }
+
+        return self._dataframe(self.symbols, params)
+
+    def performance(self, formatted: bool = False):
+        """Get ARK ETF performance
+
+        Args:
+            formatted (bool, optional): Return formatted values. Defaults to false.
+
+        Returns:
+            pandas.DataFrame
+        """
+        params = {
+            "key": "etf",
+            "endpoint": "performance",
+            "query": {
+                "formatted": formatted,
             },
         }
 
