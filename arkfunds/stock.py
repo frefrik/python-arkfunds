@@ -71,7 +71,9 @@ class Stock(ArkFunds):
             data = self._get(params)
 
             if data:
-                if endpoint == "ownership":
+                if endpoint == "profile" and not data["profile"]:
+                    df = pd.DataFrame([{"ticker": symbol}], columns=columns)
+                elif endpoint == "ownership":
                     df = self._transform_ownership_data(symbol, data)
                 elif endpoint == "price":
                     df = pd.DataFrame([data], columns=columns)
@@ -86,7 +88,7 @@ class Stock(ArkFunds):
                 dataframes.append(df)
 
         if not dataframes:
-            return f"Stock.{endpoint}: No data found for {symbols}"
+            return pd.DataFrame(columns=columns)
         else:
             return pd.concat(dataframes, axis=0).reset_index(drop=True)
 
