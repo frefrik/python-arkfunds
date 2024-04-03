@@ -40,7 +40,7 @@ class ArkFunds:
 
     def __init__(self, symbols):
         self.symbols = symbols
-        self.timeout = 10
+        self.timeout = 30
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": get_useragent(__class__.__name__)})
 
